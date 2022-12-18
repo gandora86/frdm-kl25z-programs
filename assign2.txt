@@ -1,0 +1,149 @@
+#include <watchdog.h>
+#include <systick.h>
+#include <rgbled.h>
+#include <sw1.h>
+#include <stdint.h>
+#define SECOND 150000
+
+
+void read_switch();
+void task_flash();
+void task_switch();
+void config_mode();
+
+static int color = RGBLED_COLOR_WHITE;
+static int duty_cycle = 15;
+static int time = 0;
+static int time1 = 0;
+
+static enum {FLASH_MODE, SWITCH_MODE} mode = FLASH_MODE;
+static enum {BUTTON_DOWN, BUTTON_RELEASED, BUTTON_UP, BUTTON_PRESSED} next_state = BUTTON_UP;
+	
+
+void main()
+{
+	configure_systick();
+	configure_watchdog();
+	configure_rgb_led();
+	configure_sw1();
+	
+	while(1)
+	{	if(!systick_has_fired())
+			continue;
+		
+		service_watchdog();
+		
+		void read_switch();
+		void task_flash();
+		void task_switch();
+		void config_mode();
+	}
+}
+
+void read_switch()
+{
+	switch(next_state)
+	{
+		case BUTTON_DOWN:
+			if(sw1_is_not_pressed())
+			{
+				next_state = BUTTON_RELEASED;
+			}
+			else 
+			{
+				next_state = BUTTON_DOWN;
+			}
+			time1++; // different timer
+		break;
+		case BUTTON_RELEASED:
+			if(next_state == BUTTON_RELEASED)
+			{
+				next_state = BUTTON_UP;
+			}
+			time1 = 0;
+		break;
+		case BUTTON_UP:
+			if(sw1_is_pressed())
+			{
+				next_state = BUTTON_PRESSED;
+			}
+			else
+			{
+				next_state = BUTTON_UP;
+			}
+		break;
+		case BUTTON_PRESSED:
+			if(next_state == BUTTON_PRESSED)
+			{
+				next_state = BUTTON_DOWN;
+			}
+			time1 = 0;
+		break;
+	}	
+}
+
+// function to flash led at duty cycle
+void task_flash()
+{
+	if(mode == FLASH_MODE)
+	{
+		time = (time + 1)% SECOND;
+			if(time < duty_cycle*SECOND/16)
+			{
+				set_rgbled_color_to(color);
+			}
+			else
+			{
+				set_rgbled_color_to(RGBLED_COLOR_BLACK);
+			} // button press to change duty cycle 
+			if(next_state == BUTTON_PRESSED)
+			{
+				duty_cycle = (duty_cycle + 1)%16;
+			}
+	}
+
+}
+
+// switch color at freq of 2 Hz based off switch press 
+// color select mode
+void task_switch()
+{
+	if(mode == SWITCH_MODE)
+	{
+		time = (time + 1)% SECOND;
+		if(time < SECOND/2)
+		{
+			set_rgbled_color_to(color);
+		}
+		else
+		{
+			set_rgbled_color_to(RGBLED_COLOR_BLACK);
+		}
+		if(next_state == BUTTON_PRESSED)
+		{
+			color = ((color + 1) % 7) + 1; // change color? has to be at least 1
+		}
+	}
+}
+
+// fsm to change modes 
+void config_mode() 
+{
+	switch(mode)
+	{
+		default:
+		case FLASH_MODE: // condition to enter switch
+		if(next_state == BUTTON_DOWN && time1>SECOND)
+		{
+			mode = SWITCH_MODE;
+		}
+		break;
+		
+		case SWITCH_MODE: // condition to enter flash
+		if(next_state == BUTTON_UP && time1>5*SECOND)
+		{
+			mode = FLASH_MODE;
+		}
+		break;
+	}
+}
